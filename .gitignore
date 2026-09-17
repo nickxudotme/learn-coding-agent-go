@@ -1,0 +1,53 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+vendor
+*.prod.yaml
+
+.idea/
+.vscode/
+
+# Logs
+log/
+*.log
+
+# Build artifacts
+ccc
+coverage.out
+
+# 配置文件
+config.yaml
+*.local.yaml
+
+# 环境变量文件
+.env
+.env.*
+
+# 敏感数据目录
+secrets/
+
+# 操作系统文件
+.DS_Store
+
+.codebuddy
+.cache
+
+# 前端构建产物
+web/node_modules/
+web/build/
+web/.svelte-kit
+
+tmp

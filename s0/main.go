@@ -51,16 +51,6 @@ func main() {
 			}
 		}
 
-		//var response *responses.Response
-		//for stream.Next() {
-		//	event := stream.Current()
-		//	switch event.Type {
-		//	case "response.output_text.delta":
-		//		fmt.Print(event.Delta)
-		//	case "response.completed":
-		//		response = &event.Response
-		//	}
-		//}
 		lo.Must0(stream.Err())
 		fmt.Println()
 	}

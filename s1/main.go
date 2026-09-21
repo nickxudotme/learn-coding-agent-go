@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/json/v2"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -24,12 +24,12 @@ const (
 )
 
 var (
-	client    = openai.NewClient(option.WithBaseURL(BaseURL))
-	preRespID string
+	client  = openai.NewClient(option.WithBaseURL(BaseURL))
+	history responses.ResponseInputParam
 )
 
 func Read() string {
-	fmt.Print(lipgloss.NewStyle().Foreground(lipgloss.Cyan).Render("s01 >> "))
+	fmt.Print(lipgloss.NewStyle().Foreground(lipgloss.BrightCyan).Render("s01 >> "))
 	reader := bufio.NewReader(os.Stdin)
 	msg := lo.Must(reader.ReadString('\n'))
 	return strings.TrimSpace(msg)
@@ -37,23 +37,23 @@ func Read() string {
 
 func main() {
 	ctx := context.Background()
+
 	for input := Read(); !lo.Contains([]string{"q", "exit", ""}, input); input = Read() {
 		AgentLoop(ctx, input)
 		fmt.Println()
 	}
-
 }
 
 func AgentLoop(ctx context.Context, input string) {
-	nextInput := responses.ResponseNewParamsInputUnion{OfString: openai.String(input)}
+	history = append(history, responses.ResponseInputItemParamOfMessage(input, responses.EasyInputMessageRoleUser))
+
 	// Agent 可能要连续多次调用工具
 	for {
 		params := responses.ResponseNewParams{
-			Model:              Model,
-			Reasoning:          openai.ReasoningParam{Effort: openai.ReasoningEffortNone},
-			Input:              nextInput,
-			Tools:              []responses.ToolUnionParam{bashTool},
-			PreviousResponseID: lo.If(lo.IsNotEmpty(preRespID), openai.String(preRespID)).Else(param.Opt[string]{}),
+			Model:     Model,
+			Reasoning: openai.ReasoningParam{Effort: openai.ReasoningEffortNone},
+			Input:     responses.ResponseNewParamsInputUnion{OfInputItemList: history},
+			Tools:     []responses.ToolUnionParam{bashTool},
 		}
 		stream := client.Responses.NewStreaming(ctx, params)
 		var response responses.Response
@@ -61,48 +61,53 @@ func AgentLoop(ctx context.Context, input string) {
 			event := stream.Current()
 			switch event.Type {
 			case "response.output_text.delta":
-				fmt.Print(event.Delta)
+				fmt.Print(lipgloss.NewStyle().Foreground(lipgloss.White).Render(event.Delta))
 			case "response.completed":
 				response = event.Response
 			}
 		}
-		lo.Must0(lo.IsNil(stream.Err()) && lo.IsNotNil(response))
-		preRespID = response.ID
+		lo.Must0(stream.Err())
+
+		lo.ForEach(response.Output, func(item responses.ResponseOutputItemUnion, _ int) {
+			history = append(history, param.Override[responses.ResponseInputItemUnionParam](json.RawMessage(item.RawJSON())))
+		})
 
 		// 收集这一轮的所有 tool call
 		var toolResults []responses.ResponseInputItemUnionParam
-		lo.ForEach(
-			lo.Filter(response.Output, func(item responses.ResponseOutputItemUnion, _ int) bool { return item.Type == "function_call" }),
-			func(item responses.ResponseOutputItemUnion, index int) {
-				call := item.AsFunctionCall()
-				if call.Name == "bash" {
-					var input BashInput
-					lo.Must0(json.Unmarshal([]byte(call.Arguments), &input))
-					fmt.Print("\n", lipgloss.NewStyle().Foreground(lipgloss.Yellow).Render("$ ", input.Command))
-					result := RunBash(input)
-					fmt.Println("\n", lipgloss.NewStyle().Foreground(lipgloss.Yellow).Render(result.Output))
+		for _, item := range response.Output {
+			if item.Type != "function_call" {
+				continue
+			}
 
-					toolResults = append(toolResults,
-						responses.ResponseInputItemUnionParam{
-							OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
-								CallID: openai.String(call.CallID),
-								Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
-									OfString: openai.String(string(lo.Must(json.Marshal(result)))),
-								},
-							},
+			call := item.AsFunctionCall()
+			if call.Name != "bash" {
+				continue
+			}
+
+			var input BashInput
+			lo.Must0(json.Unmarshal([]byte(call.Arguments), &input))
+			fmt.Print("\n", lipgloss.NewStyle().Foreground(lipgloss.BrightYellow).Render("$ ", input.Command))
+			result := RunBash(input)
+			fmt.Println("\n", lipgloss.NewStyle().Foreground(lipgloss.BrightGreen).Render(result.Output))
+
+			toolResults = append(toolResults,
+				responses.ResponseInputItemUnionParam{
+					OfFunctionCallOutput: &responses.ResponseInputItemFunctionCallOutputParam{
+						CallID: openai.String(call.CallID),
+						Output: responses.ResponseInputItemFunctionCallOutputOutputUnionParam{
+							OfString: openai.String(string(lo.Must(json.Marshal(result)))),
 						},
-					)
-				}
-			},
-		)
+					},
+				},
+			)
+		}
 		// 没有 tool call：
 		// 相当于 Anthropic 的 stop_reason != "tool_use"
 		if len(toolResults) == 0 {
 			return
 		}
-		nextInput = responses.ResponseNewParamsInputUnion{OfInputItemList: toolResults}
+		history = append(history, toolResults...)
 	}
-
 }
 
 var bashTool = responses.ToolUnionParam{

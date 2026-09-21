@@ -3,10 +3,9 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -32,58 +31,32 @@ func Read() string {
 func main() {
 	ctx := context.Background()
 	client := openai.NewClient(option.WithBaseURL(BaseURL))
+	var history []responses.ResponseInputItemUnionParam
 
-	for input, preRespID := Read(), ""; !lo.Contains([]string{"q", "exit", ""}, input); input = Read() {
+	for input := Read(); !lo.Contains([]string{"q", "exit", ""}, input); input = Read() {
+		history = append(history, responses.ResponseInputItemParamOfMessage(input, responses.EasyInputMessageRoleUser))
 		params := responses.ResponseNewParams{
-			Model:              Model,
-			Reasoning:          openai.ReasoningParam{Effort: openai.ReasoningEffortNone},
-			Input:              responses.ResponseNewParamsInputUnion{OfString: openai.String(input)},
-			PreviousResponseID: lo.If(lo.IsNotEmpty(preRespID), openai.String(preRespID)).Else(param.Opt[string]{}),
+			Model:     Model,
+			Reasoning: openai.ReasoningParam{Effort: openai.ReasoningEffortNone},
+			Input:     responses.ResponseNewParamsInputUnion{OfInputItemList: history},
 		}
 		stream := client.Responses.NewStreaming(ctx, params)
+		var response responses.Response
 		for stream.Next() {
 			event := stream.Current()
 			switch event.Type {
-			case "response.created":
-				preRespID = event.Response.ID
 			case "response.output_text.delta":
 				fmt.Print(event.Delta)
+			case "response.completed":
+				response = event.Response
 			}
 		}
-
 		lo.Must0(stream.Err())
+
+		lo.ForEach(response.Output, func(item responses.ResponseOutputItemUnion, _ int) {
+			history = append(history, param.Override[responses.ResponseInputItemUnionParam](json.RawMessage(item.RawJSON())))
+		})
+
 		fmt.Println()
 	}
-
-}
-
-var bashTool = responses.ToolUnionParam{
-	OfFunction: &responses.FunctionToolParam{
-		Name:        "bash",
-		Description: openai.String("Run a shell command."),
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"command": map[string]any{"type": "string", "description": "The command to run."},
-			},
-			"required":             []string{"command"},
-			"additionalProperties": false,
-		},
-		Strict: openai.Bool(true),
-	},
-}
-
-func RunBash(command string) (output string, exitCode int) {
-	cmd := exec.Command("bash", "-c", command)
-
-	outputBytes, err := cmd.CombinedOutput()
-	if err == nil {
-		return string(outputBytes), 0
-	}
-
-	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-		return string(outputBytes), exitErr.ExitCode()
-	}
-
-	panic(err)
 }

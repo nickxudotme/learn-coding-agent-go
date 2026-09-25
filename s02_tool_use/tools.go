@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/samber/lo"
@@ -144,7 +145,7 @@ func runBash(ctx context.Context, arguments string) string {
 		ExitCode int    `json:"exit_code"`
 	}
 	lo.Must0(json.Unmarshal([]byte(arguments), &input))
-
+	fmt.Print("\n", lipgloss.NewStyle().Foreground(lipgloss.BrightYellow).Render("$ ", input.Command))
 	cmd := exec.CommandContext(ctx, "bash", "-c", input.Command)
 	outputBytes, err := cmd.CombinedOutput()
 
@@ -158,7 +159,7 @@ func runBash(ctx context.Context, arguments string) string {
 		result.Output = fmt.Sprintf("[ERROR] %v", err)
 		result.ExitCode = -1
 	}
-
+	fmt.Println("\n", lipgloss.NewStyle().Foreground(lipgloss.BrightGreen).Render(result.Output))
 	return string(lo.Must(json.Marshal(result)))
 }
 

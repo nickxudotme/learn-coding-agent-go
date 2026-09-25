@@ -14,6 +14,7 @@ import (
 	"github.com/openai/openai-go/v3/packages/param"
 	"github.com/openai/openai-go/v3/responses"
 	"github.com/samber/lo"
+	"learn-coding-agent-go/s03_permission/tool"
 )
 
 const (
@@ -27,7 +28,7 @@ var (
 )
 
 func Read() string {
-	fmt.Print(lipgloss.NewStyle().Foreground(lipgloss.BrightCyan).Render("s02 >> "))
+	fmt.Print(lipgloss.NewStyle().Foreground(lipgloss.BrightCyan).Render("s03 >> "))
 	reader := bufio.NewReader(os.Stdin)
 	msg := lo.Must(reader.ReadString('\n'))
 	return strings.TrimSpace(msg)
@@ -51,7 +52,7 @@ func AgentLoop(ctx context.Context, input string) {
 			Model:     Model,
 			Reasoning: openai.ReasoningParam{Effort: openai.ReasoningEffortNone},
 			Input:     responses.ResponseNewParamsInputUnion{OfInputItemList: history},
-			Tools: lo.Map(ToolList, func(item tool, _ int) responses.ToolUnionParam {
+			Tools: lo.Map(tool.List, func(item tool.Tool, _ int) responses.ToolUnionParam {
 				return responses.ToolUnionParam{OfFunction: item.Param()}
 			}),
 		}
@@ -80,12 +81,11 @@ func AgentLoop(ctx context.Context, input string) {
 			}
 
 			call := item.AsFunctionCall()
-			tool, ok := ToolMap[call.Name]
+			t, ok := tool.Map[call.Name]
 			output := fmt.Sprintf("Unknown tool: %s", call.Name)
-			fmt.Print("\n", lipgloss.NewStyle().Foreground(lipgloss.BrightYellow).Render(call.Name))
-
 			if ok {
-				output = tool.Run(ctx, call.Arguments)
+				fmt.Print("\n", lipgloss.NewStyle().Foreground(lipgloss.BrightYellow).Render(call.Name))
+				output = t.Run(ctx, call.Arguments)
 			}
 
 			toolResults = append(toolResults,

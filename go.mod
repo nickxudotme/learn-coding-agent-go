@@ -3,12 +3,13 @@ module learn-coding-agent-go
 go 1.27
 
 require (
+	charm.land/lipgloss/v2 v2.0.6
+	github.com/bmatcuk/doublestar/v4 v4.10.2
 	github.com/openai/openai-go/v3 v3.61.0
 	github.com/samber/lo v1.53.0
 )
 
 require (
-	charm.land/lipgloss/v2 v2.0.6 // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260811164956-006e29f97886 // indirect
 	github.com/charmbracelet/x/ansi v0.11.8 // indirect
